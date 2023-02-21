@@ -1,12 +1,11 @@
 package controller
 
 import (
-	"database/sql"
 	"fmt"
+	"github.com/RaymondCode/simple-demo/dao"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	"net/http"
-	"strings"
 	"sync/atomic"
 )
 
@@ -27,23 +26,29 @@ type UserResponse struct {
 	User User `json:"user"`
 }
 
+func DBToUser(userdb *dao.UserDB) *User{
+	return &User{
+		Id: userdb.Getid(),
+		Name: userdb.Getname(),
+		FollowCount: dao.FollowNum(userdb.Gettoken()),
+		FollowerCount: dao.FollowerNum(userdb.Gettoken()),
+	}
+
+}
+
 func Register(c *gin.Context) {
 	username := c.Query("username")
 	password := c.Query("password")
 
 	token := username + password
-
-	user := &UserDB{
-		name:  username,
-		token: token,
-	}
+	user := dao.NewUserDBBYToken(username, token)
 	if exist := user.SearchName(); exist {
 		c.JSON(http.StatusOK, UserLoginResponse{
 			Response: Response{StatusCode: 1, StatusMsg: "User already exist"},
 		})
 	} else {
 		atomic.AddInt64(&userIdSequence, 1)
-		err := user.insert(userIdSequence)
+		err := user.Insert(userIdSequence)
 		if err != nil{
 			fmt.Println(err)
 			return
@@ -62,12 +67,9 @@ func Login(c *gin.Context) {
 
 	token := username + password
 
-	user := &UserDB{
-		name:  username,
-		token: password,
-	}
+	user := dao.NewUserDBBYToken(username, token)
 	if exist := user.SearchName(); exist {
-		if user.token != token {
+		if user.Gettoken() != token {
 			c.JSON(http.StatusOK, UserLoginResponse{
 				Response: Response{StatusCode: 1, StatusMsg: "Incorrect username or password"},
 			})
@@ -75,7 +77,7 @@ func Login(c *gin.Context) {
 			user.TokenMsg()
 			c.JSON(http.StatusOK, UserLoginResponse{
 				Response: Response{StatusCode: 0},
-				UserId:   user.id,
+				UserId:   user.Getid(),
 				Token:    token,
 			})
 		}
@@ -88,7 +90,7 @@ func Login(c *gin.Context) {
 
 func UserInfo(c *gin.Context) {
 	token := c.Query("token")
-	userdb := &UserDB{token:token}
+	userdb := dao.NewUserDBOnlyToken(token)
 
 	if exist := userdb.SearchToken(); exist {
 		user := DBToUser(userdb)
@@ -103,162 +105,6 @@ func UserInfo(c *gin.Context) {
 	}
 }
 
-const(
-	userName = "root"
-	password = "158931"
-	ip		 = "127.0.0.1"
-	port = "3306"
-	dbName = "douyin"
-)
-
-var DB *sql.DB
-
-func init(){
-	//构建连接："用户名:密码@tcp(IP:端口)/数据库?charset=utf8"
-	path := strings.Join([]string{userName, ":", password, "@tcp(", ip, ":", port, ")/", dbName, "?charset=utf8"}, "")
-
-	//打开数据库,前者是驱动名，所以要导入： _ "github.com/go-sql-driver/mysql"
-	DB, _ = sql.Open("mysql", path)
-	//设置数据库最大连接数
-	DB.SetConnMaxLifetime(100)
-	//设置上数据库最大闲置连接数
-	DB.SetMaxIdleConns(10)
-	//验证连接
-	if err := DB.Ping(); err != nil {
-		fmt.Println("open database fail")
-		return
-	}
-}
-
-type UserDB struct {
-	id int64
-	name string
-	token string
-}
-
-//通过id和name判断是否存在，并将另一项存储出来
-func (user *UserDB)SearchId() bool {
-	sqlStr := fmt.Sprintf("select name from table users where id=%d", user.id)
-	exist := false
-	rows, err := DB.Query(sqlStr)
-	if err != nil{
-		fmt.Println(err)
-	}
-	for rows.Next() {
-		exist = true
-		err = rows.Scan(&user.name)
-		if err != nil{
-			fmt.Println(err)
-		}
-	}
-	defer rows.Close()
-	return exist
-
-}
-
-func (user *UserDB)SearchName() bool {
-	sqlStr := fmt.Sprintf("select id from table users where name=%s", user.name)
-	exist := false
-	rows, err := DB.Query(sqlStr)
-	if err != nil{
-		fmt.Println(err)
-	}
-	for rows.Next() {
-		exist = true
-		err = rows.Scan(&user.id)
-		if err != nil{
-			fmt.Println(err)
-		}
-	}
-	defer rows.Close()
-	return exist
-}
-
-func (user *UserDB)SearchToken() bool {
-	sqlStr := fmt.Sprintf("select id,name from table users where name=%s", user.id,user.name)
-	exist := false
-	rows, err := DB.Query(sqlStr)
-	if err != nil{
-		fmt.Println(err)
-	}
-	for rows.Next() {
-		exist = true
-		err = rows.Scan(&user.id, &user.name)
-		if err != nil{
-			fmt.Println(err)
-		}
-	}
-	defer rows.Close()
-	return exist
-}
-
-//数据库中插入新用户信息
-func (user *UserDB)insert(id int64) error{
-	sqlStr := fmt.Sprintf("insert into users (id, name, token) values (%d, %s, %s)", id, user.name, user.token)
-	_, err := DB.Exec(sqlStr)
-	return err
-}
 
 
-//根据token得到id和name
-func (user *UserDB)TokenMsg(){
-	sqlStr := fmt.Sprintf("select id, name from table users where name=%s", user.token)
-	rows, err := DB.Query(sqlStr)
-	if err != nil{
-		fmt.Println(err)
-		return
-	}
-	err = rows.Scan(&user.id, &user.name)
-	if err != nil{
-		fmt.Println(err)
-	}
-	defer rows.Close()
-	return
-}
-
-//根据token返回粉丝数
-func FollowerNum(token string) int64 {
-	user := &UserDB{token: token}
-	user.TokenMsg()
-	sqlStr := fmt.Sprintf("select count(id) from fans where hostid=%d", user.id)
-	rows, err := DB.Query(sqlStr)
-	if err != nil{
-		fmt.Println(err)
-	}
-	var count int64
-	err = rows.Scan(&count)
-	if err != nil{
-		fmt.Println(err)
-	}
-	defer rows.Close()
-	return count
-}
-
-//根据token返回关注数
-func FollowNum(token string) int64 {
-	user := &UserDB{token: token}
-	user.TokenMsg()
-	sqlStr := fmt.Sprintf("select count(hostid) from fans where id=%d", user.id)
-	rows, err := DB.Query(sqlStr)
-	if err != nil{
-		fmt.Println(err)
-	}
-	var count int64
-	err = rows.Scan(&count)
-	if err != nil{
-		fmt.Println(err)
-	}
-	defer rows.Close()
-	return count
-}
-
-func DBToUser(userdb *UserDB) *User{
-	return &User{
-		Id: userdb.id,
-		Name: userdb.name,
-		FollowCount: FollowNum(userdb.token),
-		FollowerCount: FollowerNum(userdb.token),
-	}
-
-}
 

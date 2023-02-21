@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/RaymondCode/simple-demo/dao"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
@@ -14,7 +15,7 @@ type UserListResponse struct {
 func RelationAction(c *gin.Context) {
 	token := c.Query("token")
 
-	userdb := &UserDB{token: token}
+	userdb := dao.NewUserDBOnlyToken(token)
 	if exist := userdb.SearchToken(); exist {
 		c.JSON(http.StatusOK, Response{StatusCode: 0})
 	} else {

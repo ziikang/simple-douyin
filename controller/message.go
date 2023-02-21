@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"github.com/RaymondCode/simple-demo/dao"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
@@ -24,7 +25,7 @@ func MessageAction(c *gin.Context) {
 	toUserId := c.Query("to_user_id")
 	content := c.Query("content")
 
-	userdb := &UserDB{token: token}
+	userdb := dao.NewUserDBOnlyToken(token)
 	if exist := userdb.SearchToken(); exist {
 		user := DBToUser(userdb)
 		userIdB, _ := strconv.Atoi(toUserId)
@@ -53,7 +54,7 @@ func MessageChat(c *gin.Context) {
 	token := c.Query("token")
 	toUserId := c.Query("to_user_id")
 
-	userdb := &UserDB{token: token}
+	userdb := dao.NewUserDBOnlyToken(token)
 	if exist := userdb.SearchToken(); exist {
 		user := DBToUser(userdb)
 		userIdB, _ := strconv.Atoi(toUserId)

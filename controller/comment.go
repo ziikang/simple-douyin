@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"github.com/RaymondCode/simple-demo/dao"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
@@ -20,7 +21,7 @@ func CommentAction(c *gin.Context) {
 	token := c.Query("token")
 	actionType := c.Query("action_type")
 
-	userdb := &UserDB{token: token}
+	userdb := dao.NewUserDBOnlyToken(token)
 	if exist := userdb.SearchToken(); exist {
 		user := DBToUser(userdb)
 		if actionType == "1" {
